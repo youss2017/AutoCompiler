@@ -17,11 +17,17 @@ public class Comp {
     static String OutputName = "a.out";
 
     static boolean ForceRecompile = false;
+    static int ExitCode = 0;
 
     // filename, last modified
     static HashMap<String, Long> REG = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
+        if(args.length == 1) {
+            System.exit(0);
+        } else if(args.length == 2) {
+            ForceRecompile = true;
+        }
         File configfile = new File(CONFIG_FILE);
         if(!configfile.exists())
             FirstTimeUse();
@@ -65,13 +71,14 @@ public class Comp {
         LoadConfigurations();
         LoadCacheRegistry();
         Compile();
+        System.exit(ExitCode);
     }
 
     static void Compile() throws Exception {
         // TODO: Support multithreading compiling.
-        System.out.println("Compiling...");
         String working_directory = System.getProperty("user.dir");
         var files = LoadFiles();
+        System.out.println("Compiling...");
         if(files.size() == 0) {
             System.err.println("Could not find any files to compile!");
             System.exit(5);
@@ -80,15 +87,14 @@ public class Comp {
         for(var file : files) {
             long last_access = REG.getOrDefault(file.getName(), 0L);
             if(last_access == 0) {
-                int exitcode = CompileHelperFunction(working_directory, file);
+                CompileHelperFunction(working_directory, file);
                 Thread.sleep(50);
                 // Update Registry File
                 // Add New Entry
-                if(exitcode == 1)
-                    CacheEntries.add(file.getName() + ":" + file.lastModified());
+                CacheEntries.add(file.getName() + ":" + file.lastModified());
             } else if(last_access != file.lastModified()) {
                 // compile again because file changed!
-                int exitcode = CompileHelperFunction(working_directory, file);
+                CompileHelperFunction(working_directory, file);
                 Thread.sleep(50);
                 // Update Registry File
                 // 1) Remove Old Entry
@@ -98,8 +104,7 @@ public class Comp {
                     }
                 }
                 // 2) Add New Entry
-                if(exitcode == 1)
-                    CacheEntries.add(file.getName() + ":" + file.lastModified());
+                CacheEntries.add(file.getName() + ":" + file.lastModified());
             }
         }
         // link functions
@@ -142,7 +147,7 @@ public class Comp {
         output.close();
     }
 
-    static int CompileHelperFunction(String working_directory, File file) throws Exception {
+    static void CompileHelperFunction(String working_directory, File file) throws Exception {
         // file was not compiled
         ArrayList<String> command = new ArrayList<>();
         command.add("g++");
@@ -160,13 +165,14 @@ public class Comp {
         process.inheritIO();
         Process p = process.start();
         p.waitFor();
-        return p.exitValue();
+        if(p.exitValue() != 0)
+            ExitCode = 1;
     }
 
     static ArrayList<File> LoadFiles() {
         String working_directory = System.getProperty("user.dir");
-        System.out.println("Working Directory: " + working_directory);
         File wd = new File(working_directory);
+        System.out.println("Working Directory: " + working_directory);
         ArrayList<File> subobjects = new ArrayList<>();
         LoadFilesHelper(wd, subobjects);
         return subobjects;
@@ -235,7 +241,6 @@ public class Comp {
                 OutputName = line.substring(line.indexOf("=") + 1);
                 if(OutputName.length() == 0)
                     OutputName = "a.out";
-                System.out.println("output_name=" + OutputName);
             } else {
                 // error
                 System.err.println("INVALID CONFIGURATION! At line " + (i.val + 1));
@@ -258,6 +263,7 @@ public class Comp {
         include_path.toArray(include_arr);
         libraries_path.toArray(libpath_extensions_arr);
         libraries.toArray(lib_extensions_arr);
+        System.out.println("output_name=" + OutputName);
         System.out.println("Compiler Options: " + Arrays.toString(options_arr));
         System.out.println("Compiling Extensions: " + Arrays.toString(compiling_extensions_arr));
         System.out.println("Include Path: " + Arrays.toString(include_arr));
